@@ -1,0 +1,97 @@
+"""Pruebas de las migraciones de Alembic contra PostgreSQL real.
+
+Requieren la instancia de ``compose.yaml`` accesible y una base de datos
+dedicada para tests. Si PostgreSQL no está accesible, estas pruebas fallan;
+no se hace skip para conseguir verde.
+"""
+
+import os
+import subprocess
+from collections.abc import Iterator
+
+import pytest
+from sqlalchemy import create_engine, inspect, text
+
+TEST_DB = "taskflow_test"
+
+
+def _admin_url() -> str:
+    user = os.environ.get("POSTGRES_USER", "taskflow")
+    password = os.environ.get("POSTGRES_PASSWORD", "taskflow_local_dev")
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    default_db = os.environ.get("POSTGRES_DB", "taskflow")
+    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{default_db}"
+
+
+def _test_db_url() -> str:
+    user = os.environ.get("POSTGRES_USER", "taskflow")
+    password = os.environ.get("POSTGRES_PASSWORD", "taskflow_local_dev")
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{TEST_DB}"
+
+
+def _run_alembic(*args: str) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    env["DATABASE_URL"] = _test_db_url()
+    return subprocess.run(
+        ["uv", "run", "alembic", *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+
+@pytest.fixture()
+def clean_test_db() -> Iterator[None]:
+    """Deja la base de test creada y sin migraciones aplicadas."""
+    admin = create_engine(_admin_url(), isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": TEST_DB}
+        ).scalar()
+        if not exists:
+            conn.execute(text(f'CREATE DATABASE "{TEST_DB}"'))
+    admin.dispose()
+
+    engine = create_engine(_test_db_url(), isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        conn.execute(text("DROP TABLE IF EXISTS states"))
+    engine.dispose()
+
+    yield
+
+    engine = create_engine(_test_db_url(), isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        conn.execute(text("DROP TABLE IF EXISTS states"))
+    engine.dispose()
+
+
+def _has_table(name: str) -> bool:
+    engine = create_engine(_test_db_url())
+    try:
+        return inspect(engine).has_table(name)
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_head_crea_states_y_downgrade_base_la_elimina(clean_test_db: None) -> None:
+    assert not _has_table("states")
+
+    _run_alembic("upgrade", "head")
+    assert _has_table("states"), "upgrade head debe crear la tabla states"
+
+    _run_alembic("downgrade", "base")
+    assert not _has_table("states"), "downgrade base debe eliminar la tabla states"
+
+
+def test_upgrade_head_dos_veces_seguidas_no_falla(clean_test_db: None) -> None:
+    _run_alembic("upgrade", "head")
+    # La segunda vez no debe fallar: ya está en head.
+    result = _run_alembic("upgrade", "head")
+    assert result.returncode == 0
+    assert _has_table("states")
