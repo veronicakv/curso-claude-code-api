@@ -46,7 +46,21 @@ Proyectos, tareas, filtros, `due_at`, skills, hooks y CI.
 
 - Capa de acceso a datos: SQLAlchemy 2.x ORM.
 - Driver de PostgreSQL: `psycopg` v3.
-- Lectura de configuración: `pydantic-settings`.
+- Lectura de configuración: `pydantic-settings`. Decisión tomada: se adopta, sin
+  condicional; el Incremento 1 lo instala como dependencia fija.
+  Por qué encaja: `fastapi` ya arrastra `pydantic` v2 (2.13.5 en `uv.lock`), así
+  que `pydantic-settings` reutiliza esa familia en lugar de sumar una nueva.
+- Módulo de configuración de conexión: `app/db.py`. Decisión tomada entre las dos
+  opciones que barajaba el plan (`app/config.py` o `app/db.py`).
+  Por qué encaja: el paquete `app/` ya existe con `__init__.py` y hoy solo tiene
+  `main.py`; `app/db.py` concentra la URL de conexión y, más adelante, el engine
+  y la sesión de SQLAlchemy en un único punto de la capa de datos.
+- Idempotencia del seed de estados: `INSERT ... ON CONFLICT DO NOTHING` sobre una
+  restricción única de `code`. Decisión tomada entre `ON CONFLICT DO NOTHING` y
+  un "equivalente por `code`" que el plan dejaba sin concretar.
+  Por qué encaja: la migración corre contra `postgres:18-alpine` (`compose.yaml`)
+  y los tests contra PostgreSQL real, nunca SQLite, así que `ON CONFLICT` de
+  PostgreSQL está disponible y no hace falta emularlo.
 - Tests de persistencia: PostgreSQL real usando la instancia de `compose.yaml`,
   con una base de datos dedicada para tests. Si PostgreSQL no está accesible,
   los tests que lo requieren **fallan**; no se hace skip para conseguir verde.
@@ -56,10 +70,9 @@ Proyectos, tareas, filtros, `due_at`, skills, hooks y CI.
 
 ### Incremento 1 — Dependencias y configuración de conexión
 
-- **Qué:** añadir a `pyproject.toml` driver + capa de datos + Alembic (y
-  `pydantic-settings` si se adopta); `uv lock`; módulo de configuración
-  (`app/config.py` o `app/db.py`) que arme la URL de conexión desde las
-  variables `POSTGRES_*`. Sin migraciones ni endpoints todavía.
+- **Qué:** añadir a `pyproject.toml` driver + capa de datos + Alembic +
+  `pydantic-settings`; `uv lock`; módulo `app/db.py` que arme la URL de conexión
+  desde las variables `POSTGRES_*`. Sin migraciones ni endpoints todavía.
 - **Comprobación:**
   - `uv sync --locked` instala sin error.
   - `uv run ruff check .` limpio.
@@ -69,8 +82,8 @@ Proyectos, tareas, filtros, `due_at`, skills, hooks y CI.
 
 ### Incremento 2 — Alembic operativo con una migración base
 
-- **Qué:** `alembic init`; ajustar `env.py` para tomar la URL del módulo de
-  config (no de `alembic.ini`); primera revisión con `upgrade`/`downgrade`
+- **Qué:** `alembic init`; ajustar `env.py` para tomar la URL de `app/db.py`
+  (no de `alembic.ini`); primera revisión con `upgrade`/`downgrade`
   (creación de la tabla `states` vacía, sin datos).
 - **Comprobación:**
   - Test que falla primero: `alembic upgrade head` crea la tabla `states`;
@@ -81,8 +94,8 @@ Proyectos, tareas, filtros, `due_at`, skills, hooks y CI.
 ### Incremento 3 — Seed idempotente del catálogo de estados
 
 - **Qué:** nueva revisión de Alembic que inserta `PENDIENTE`, `EN_CURSO`,
-  `BLOQUEADA`, `HECHA` con su campo de orden, de forma idempotente
-  (`ON CONFLICT DO NOTHING` o equivalente por `code`).
+  `BLOQUEADA`, `HECHA` con su campo de orden, de forma idempotente con
+  `INSERT ... ON CONFLICT DO NOTHING` sobre la restricción única de `code`.
 - **Comprobación:**
   - Test que falla primero: tras `upgrade head`, la tabla contiene exactamente
     los 4 `code` esperados en el orden del catálogo.
