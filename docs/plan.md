@@ -42,15 +42,15 @@ Proyectos, tareas, filtros, `due_at`, skills, hooks y CI.
 - Rama `feature/persistencia`, sin diferencias respecto a `main`.
 - `docs/decisiones-ingenieria.md` fija **Alembic** como motor de migraciones.
 
-## Decisiones abiertas (a resolver antes del incremento 1)
+## Decisiones acordadas
 
-- Capa de acceso a datos: propuesta SQLAlchemy 2.x.
-- Driver de PostgreSQL: propuesta `psycopg` v3.
-- Lectura de configuración: propuesta `pydantic-settings`.
-- Cómo apunta la suite de tests a PostgreSQL (instancia `db` con base dedicada
-  de tests; comportamiento si no hay PostgreSQL accesible).
-- Si se permite actualizar `README.md` al añadir el comando de migración
-  (no está en la lista de archivos protegidos).
+- Capa de acceso a datos: SQLAlchemy 2.x ORM.
+- Driver de PostgreSQL: `psycopg` v3.
+- Lectura de configuración: `pydantic-settings`.
+- Tests de persistencia: PostgreSQL real usando la instancia de `compose.yaml`,
+  con una base de datos dedicada para tests. Si PostgreSQL no está accesible,
+  los tests que lo requieren **fallan**; no se hace skip para conseguir verde.
+- `README.md` se puede modificar para documentar el comando de migración.
 
 ## Incrementos
 
