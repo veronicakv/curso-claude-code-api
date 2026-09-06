@@ -1,4 +1,8 @@
-"""Rutas del recurso Proyectos."""
+"""Rutas del recurso Proyectos.
+
+`DELETE /projects/{id}` responde `204`/`404`; la rama `409` (proyecto con
+tareas) queda para el incremento de Tasks, cuando exista la relación.
+"""
 
 from typing import Annotated
 
@@ -56,3 +60,13 @@ def update_project(project_id: int, patch: ProjectPatch, session: SessionDep) ->
     session.commit()
     session.refresh(project)
     return project
+
+
+@router.delete("/projects/{project_id}", status_code=204)
+def delete_project(project_id: int, session: SessionDep) -> None:
+    """Borra el proyecto. `409` por tareas queda para el incremento de Tasks."""
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="proyecto no encontrado")
+    session.delete(project)
+    session.commit()

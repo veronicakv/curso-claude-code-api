@@ -220,3 +220,26 @@ async def test_patch_con_clave_desconocida_es_422(client: httpx.AsyncClient) -> 
     assert respuesta.status_code == 422
     assert "detail" in respuesta.json()
 
+
+# --- Incremento 4: DELETE /projects/{id} (204 / 404) -------------------------
+
+
+async def test_delete_borra_y_404_si_no_existe(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = (await client.post("/projects", json={"name": "Casa"})).json()["id"]
+
+        borrado = await client.delete(f"/projects/{pid}")
+        assert borrado.status_code == 204
+        assert borrado.content == b""
+
+        assert (await client.get(f"/projects/{pid}")).status_code == 404
+
+        de_nuevo = await client.delete(f"/projects/{pid}")
+        assert de_nuevo.status_code == 404
+        assert "detail" in de_nuevo.json()
+
+
+async def test_delete_id_no_entero_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        respuesta = await client.delete("/projects/abc")
+    assert respuesta.status_code == 422
