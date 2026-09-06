@@ -244,3 +244,25 @@ async def test_delete_id_no_entero_es_422(client: httpx.AsyncClient) -> None:
     async with client:
         respuesta = await client.delete("/projects/abc")
     assert respuesta.status_code == 422
+
+
+# --- Incremento 6: DELETE /projects/{id} con tareas -> 409 ------------------
+
+
+async def test_delete_proyecto_con_tareas_es_409(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = (await client.post("/projects", json={"name": "Casa"})).json()["id"]
+        sid = (await client.get("/states")).json()[0]["id"]
+        tid = (
+            await client.post(
+                "/tasks", json={"title": "Regar", "project_id": pid, "state_id": sid}
+            )
+        ).json()["id"]
+
+        respuesta = await client.delete(f"/projects/{pid}")
+        assert respuesta.status_code == 409
+        assert "detail" in respuesta.json()
+
+        # El proyecto y la tarea siguen existiendo tras el 409.
+        assert (await client.get(f"/projects/{pid}")).status_code == 200
+        assert (await client.get(f"/tasks/{tid}")).status_code == 200
