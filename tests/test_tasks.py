@@ -184,3 +184,91 @@ async def test_get_task_id_no_entero_es_422(client: httpx.AsyncClient) -> None:
     async with client:
         respuesta = await client.get("/tasks/abc")
     assert respuesta.status_code == 422
+
+
+# --- Incremento 3 (v1): GET /tasks con filtros project_id y state_id -------
+
+
+async def _crear_tarea(
+    client: httpx.AsyncClient, title: str, project_id: int, state_id: int
+) -> int:
+    respuesta = await client.post(
+        "/tasks", json={"title": title, "project_id": project_id, "state_id": state_id}
+    )
+    return respuesta.json()["id"]
+
+
+async def test_get_tasks_filtros_solos_y_combinados(client: httpx.AsyncClient) -> None:
+    async with client:
+        p1 = await _crear_proyecto(client, "P1")
+        p2 = await _crear_proyecto(client, "P2")
+        estados = (await client.get("/states")).json()
+        s1, s2 = estados[0]["id"], estados[1]["id"]
+
+        t_p1s1 = await _crear_tarea(client, "a", p1, s1)
+        t_p1s2 = await _crear_tarea(client, "b", p1, s2)
+        t_p2s1 = await _crear_tarea(client, "c", p2, s1)
+
+        todas = await client.get("/tasks")
+        assert todas.status_code == 200
+        ids = [t["id"] for t in todas.json()]
+        assert ids == sorted(ids) == [t_p1s1, t_p1s2, t_p2s1]
+
+        por_proyecto = (await client.get("/tasks", params={"project_id": p1})).json()
+        assert {t["id"] for t in por_proyecto} == {t_p1s1, t_p1s2}
+
+        por_estado = (await client.get("/tasks", params={"state_id": s1})).json()
+        assert {t["id"] for t in por_estado} == {t_p1s1, t_p2s1}
+
+        combinado = (
+            await client.get("/tasks", params={"project_id": p1, "state_id": s1})
+        ).json()
+        assert [t["id"] for t in combinado] == [t_p1s1]
+
+
+async def test_get_tasks_dos_llamadas_identicas_mismo_orden(
+    client: httpx.AsyncClient,
+) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        for n in ("a", "b", "c"):
+            await _crear_tarea(client, n, pid, sid)
+
+        primera = [t["id"] for t in (await client.get("/tasks")).json()]
+        segunda = [t["id"] for t in (await client.get("/tasks")).json()]
+        con_filtro_1 = [
+            t["id"] for t in (await client.get("/tasks", params={"project_id": pid})).json()
+        ]
+        con_filtro_2 = [
+            t["id"] for t in (await client.get("/tasks", params={"project_id": pid})).json()
+        ]
+    assert primera == segunda
+    assert con_filtro_1 == con_filtro_2
+
+
+async def test_get_tasks_filtro_sin_resultados_lista_vacia(
+    client: httpx.AsyncClient,
+) -> None:
+    async with client:
+        pid = await _crear_proyecto(client, "ConTareas")
+        sid = await _un_state_id(client)
+        await _crear_tarea(client, "x", pid, sid)
+        vacio_pid = await _crear_proyecto(client, "SinTareas")
+
+        respuesta = await client.get("/tasks", params={"project_id": vacio_pid})
+    assert respuesta.status_code == 200
+    assert respuesta.json() == []
+
+
+async def test_get_tasks_filtro_no_entero_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        respuesta = await client.get("/tasks", params={"project_id": "abc"})
+    assert respuesta.status_code == 422
+
+
+async def test_get_tasks_es_lista_en_la_raiz(client: httpx.AsyncClient) -> None:
+    async with client:
+        respuesta = await client.get("/tasks")
+    assert respuesta.status_code == 200
+    assert isinstance(respuesta.json(), list)

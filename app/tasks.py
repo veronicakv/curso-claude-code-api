@@ -6,6 +6,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
@@ -38,6 +39,25 @@ def create_task(payload: TaskIn, session: SessionDep) -> Task:
     session.commit()
     session.refresh(task)
     return task
+
+
+@router.get("/tasks", response_model=list[TaskOut])
+def list_tasks(
+    session: SessionDep,
+    project_id: int | None = None,
+    state_id: int | None = None,
+) -> list[Task]:
+    """Tareas ordenadas por ``id`` ascendente.
+
+    ``project_id`` y ``state_id`` filtran, solos o combinados (AND). Filtrar por
+    un id inexistente devuelve lista vacía, no ``404``.
+    """
+    stmt = select(Task).order_by(Task.id)
+    if project_id is not None:
+        stmt = stmt.where(Task.project_id == project_id)
+    if state_id is not None:
+        stmt = stmt.where(Task.state_id == state_id)
+    return list(session.scalars(stmt).all())
 
 
 @router.get("/tasks/{task_id}", response_model=TaskOut)
