@@ -12,7 +12,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class DatabaseSettings(BaseSettings):
     """Parámetros de conexión tomados del entorno."""
 
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     user: str = Field(alias="POSTGRES_USER")
     password: str = Field(alias="POSTGRES_PASSWORD")
