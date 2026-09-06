@@ -4,7 +4,9 @@ El contrato exige los campos declarados, **ni más ni menos**: un campo de sobra
 rompe a quien consuma la API igual que uno que falta.
 """
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from app.text import normalizar_texto_requerido
 
 
 class StateOut(BaseModel):
@@ -14,3 +16,27 @@ class StateOut(BaseModel):
 
     id: int
     code: str
+
+
+class ProjectIn(BaseModel):
+    """Cuerpo de ``POST /projects``. ``name`` se normaliza antes de validar."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _normaliza_name(cls, valor: str) -> str:
+        return normalizar_texto_requerido(valor)
+
+
+class ProjectOut(BaseModel):
+    """Proyecto que devuelve la API: exactamente ``id``, ``name`` y ``description``."""
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: int
+    name: str
+    description: str | None
