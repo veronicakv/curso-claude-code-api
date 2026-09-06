@@ -1,7 +1,10 @@
 # Plan: recurso Proyectos
 
 Estado: acordado el plan; sin implementación. Alcance de este plan: la sección
-**Proyectos** del contrato salvo `DELETE`, que se pospone al plan de tareas.
+**Proyectos** del contrato, incluido `DELETE /projects/{id}` en su forma básica
+(`204` al borrar, `404` si no existe). La rama `409` por proyecto con tareas
+queda diferida al incremento de Tasks: hoy no existen la tabla `tasks` ni la
+relación `tasks.project_id`.
 
 ## Fuentes
 
@@ -13,10 +16,10 @@ las listas, Esquemas de Respuesta, Matriz Mínima de Tests),
 
 ## Fuera de alcance
 
-- `DELETE /projects/{id}` completo: tanto el `204` sin tareas como el `409` con
-  tareas. Se planifica junto a las tareas, cuando exista la relación.
-- La rama `409` y la FK `tasks.project_id`: no se crea ninguna referencia a
-  tareas en este plan.
+- La rama `409` de `DELETE /projects/{id}` (borrar un proyecto que tiene tareas)
+  y la FK `tasks.project_id`: no se crea ninguna referencia a `tasks` en este
+  plan; esa rama se implementa en el incremento de Tasks. El `DELETE` básico
+  (`204`/`404`) sí entra en este plan, en el Incremento 4.
 - Tareas (tabla, endpoints, filtros), `due_at`, `overdue`.
 - Normalización de `title` de tarea y el trabajo de invisibles Unicode de la
   sesión 7. Este plan solo trae esa regla al `name` de proyecto (ver Decisiones).
@@ -94,6 +97,13 @@ añade un comando nuevo que documentar; no se prevé.
   reutilizando el patrón de `test_states.py` (base `taskflow_test`, `alembic
   upgrade head`, override de `get_session`). Si PostgreSQL no está accesible,
   fallan; no se hace skip.
+- **`DELETE /projects/{id}` básico ahora**: `204` sin cuerpo al borrar un
+  proyecto existente y `404` con `detail` si el `id` no existe. La rama `409`
+  (proyecto con tareas) se difiere.
+  Por qué encaja: el contrato ya fija `DELETE` `204`/`409`, y el `204` es la
+  rama correcta mientras ninguna fila pueda tener tareas; el `409` es
+  inalcanzable e intesteable sin la tabla `tasks`, así que se separa el borrado
+  básico del comportamiento dependiente de Tasks.
 - **Un incremento = un commit que se confirma solo**. Al terminar cada
   incremento se para y se espera aprobación; no se encadena el siguiente.
 
@@ -116,15 +126,16 @@ añade un comando nuevo que documentar; no se prevé.
   - `uv run ruff check .` limpio.
   - `uv run pytest -q` verde, con los tests de salud y estados intactos.
 
-### Incremento 2 — `POST /projects` y `GET /projects`
+### Incremento 2 — `POST /projects`, `GET /projects` y `GET /projects/{id}`
 
 - **Qué:** `app/text.py` con `normalizar_texto_requerido`. En `app/schemas.py`:
   `ProjectIn` (`name` obligatorio y normalizado, `description` opcional,
   `extra="forbid"`) y `ProjectOut` (`id`, `name`, `description`;
   `from_attributes=True`, `extra="forbid"`; `description` ausente se serializa
   como `null`). `app/projects.py` con `APIRouter`: `POST` → `201` con el recurso
-  creado; `GET` → `200` con lista JSON en la raíz ordenada por `id` ascendente.
-  Router montado en `app/main.py`.
+  creado; `GET /projects` → `200` con lista JSON en la raíz ordenada por `id`
+  ascendente; `GET /projects/{id}` → `200` con el esquema exacto, o `404` con
+  `{"detail": "<mensaje>"}` si no existe. Router montado en `app/main.py`.
 - **Comprobación:**
   - Test que falla primero: `tests/test_projects.py::test_post_crea_y_get_lista_en_orden`
     — `POST {"name": "Casa"}` → `201` y cuerpo con exactamente las claves `id`
@@ -133,6 +144,11 @@ añade un comando nuevo que documentar; no se prevé.
     ascendente.
   - Test: `GET /projects` devuelve una lista en la raíz, no un objeto envolvente
     con metadatos.
+  - Test: `GET /projects/{id}` de un proyecto existente → `200` con exactamente
+    las claves `id`, `name`, `description`.
+  - Test: `GET /projects/{id}` con un `id` inexistente → `404` con la clave de
+    primer nivel `detail`.
+  - Test: `GET /projects/{id}` con un `id` no entero → `422`.
   - Test: `POST` con `name` que queda vacío tras recortar, y `POST` con `name`
     formado solo por caracteres invisibles (`U+200B`), devuelven `422` con la
     clave de primer nivel `detail`.
@@ -141,32 +157,51 @@ añade un comando nuevo que documentar; no se prevé.
   - `uv run ruff check .` limpio.
   - `uv run pytest -q` verde; `test_health` y `test_states` intactos.
 
-### Incremento 3 — `GET /projects/{id}` y `PATCH /projects/{id}`
+### Incremento 3 — `PATCH /projects/{id}`
 
-- **Qué:** en `app/projects.py`: `GET /projects/{id}` → `200` con el esquema
-  exacto, o `404` con `{"detail": "<mensaje>"}` si no existe. `PATCH
-  /projects/{id}` → `200` con actualización parcial (campo ausente no cambia;
-  `name` presente revalidado; `description` fijable a `null`; cuerpo `{}`
-  devuelve el recurso sin cambios), o `404` si no existe. Esquema `ProjectPatch`
-  en `app/schemas.py` con todos los campos opcionales y `extra="forbid"`.
+- **Qué:** en `app/projects.py`, `PATCH /projects/{id}` → `200` con actualización
+  parcial (campo ausente no cambia; `name` presente se revalida con la
+  normalización adoptada en «Decisiones acordadas»; `description` fijable a
+  `null`; cuerpo `{}` devuelve el recurso sin cambios), o `404` si no existe.
+  Esquema `ProjectPatch` en `app/schemas.py` con todos los campos opcionales y
+  `extra="forbid"`.
 - **Comprobación:**
-  - Test que falla primero: `tests/test_projects.py::test_get_por_id_y_patch_parcial`
-    — crear un proyecto; `GET /projects/{id}` → `200` con exactamente `id`,
-    `name`, `description`; `PATCH {"description": "x"}` → `200` con `name` sin
+  - Test que falla primero: `tests/test_projects.py::test_patch_parcial`
+    — crear un proyecto; `PATCH {"description": "x"}` → `200` con `name` sin
     cambios y `description` = `"x"`; `PATCH {"description": null}` → `200` con
     `description` = `null`; `PATCH {}` → `200` sin cambios.
+  - Test: `PATCH {"name": "Otro"}` → `200`, y tanto el cuerpo como un
+    `GET /projects/{id}` posterior devuelven `name` = `"Otro"`. Es cobertura de
+    disciplina del proyecto ("CRUD feliz de proyectos"), no una exigencia
+    adicional del contrato.
   - Test: `PATCH` con `name` que no deja carácter visible → `422` con `detail`.
-  - Test: `GET` y `PATCH` sobre un `id` inexistente → `404` con `detail`.
-  - Test: `GET /projects/{id}` con un `id` no entero → `422`.
+  - Test: `PATCH` sobre un `id` inexistente → `404` con `detail`.
   - Test: `PATCH` con clave desconocida en el cuerpo → `422`.
   - `uv run ruff check .` limpio.
   - `uv run pytest -q` verde; salud, estados y el Incremento 2 intactos.
 
+### Incremento 4 — `DELETE /projects/{id}` básico (`204`/`404`)
+
+- **Qué:** en `app/projects.py`, ruta `DELETE /projects/{project_id}` que borra
+  el proyecto y responde `204` sin cuerpo si existe, o `404` con
+  `{"detail": "<mensaje>"}` si no existe. Hoy ninguna fila puede tener tareas
+  (no existe la tabla `tasks`), así que el borrado siempre cae en la rama `204`.
+  No se implementa la rama `409` ni se añade la FK `tasks.project_id`.
+- **Comprobación:**
+  - Test que falla primero: `tests/test_projects.py::test_delete_borra_y_404_si_no_existe`
+    — crear un proyecto; `DELETE /projects/{id}` → `204` sin cuerpo; `GET
+    /projects/{id}` posterior → `404`. `DELETE /projects/{id}` sobre un `id`
+    inexistente → `404` con la clave de primer nivel `detail`.
+  - Test: `DELETE /projects/{id}` con un `id` no entero → `422`.
+  - `uv run ruff check .` limpio.
+  - `uv run pytest -q` verde; salud, estados y los Incrementos 2 y 3 intactos.
+
 ## Incógnitas para planes posteriores
 
-- `DELETE /projects/{id}`: el plan de tareas debe definir cómo se detecta que un
-  proyecto "tiene tareas" (consulta previa o restricción de FK con captura del
-  error) para devolver `409`, y el `204` cuando no las tiene.
+- Rama `409` de `DELETE /projects/{id}`: el incremento de Tasks debe definir
+  cómo se detecta que un proyecto "tiene tareas" (consulta previa o restricción
+  de FK con captura del error) para devolver `409` en vez del `204`. El `DELETE`
+  básico (`204`/`404`) ya queda cubierto por el Incremento 4.
 - Mensaje exacto de `detail` en los `404` y `422`: el contrato solo exige que la
   clave de primer nivel sea `detail` y el mensaje sea legible. Se concreta al
   implementar cada incremento, no se decide aquí.
