@@ -52,6 +52,7 @@ def client() -> Iterator[httpx.AsyncClient]:
 
     engine = create_engine(_test_db_url())
     with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS tasks"))
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         conn.execute(text("DROP TABLE IF EXISTS states"))
         conn.execute(text("DROP TABLE IF EXISTS projects"))
