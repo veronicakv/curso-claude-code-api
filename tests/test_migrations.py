@@ -66,6 +66,7 @@ def clean_test_db() -> Iterator[None]:
     with engine.connect() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         conn.execute(text("DROP TABLE IF EXISTS states"))
+        conn.execute(text("DROP TABLE IF EXISTS projects"))
     engine.dispose()
 
     yield
@@ -74,6 +75,7 @@ def clean_test_db() -> Iterator[None]:
     with engine.connect() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         conn.execute(text("DROP TABLE IF EXISTS states"))
+        conn.execute(text("DROP TABLE IF EXISTS projects"))
     engine.dispose()
 
 
@@ -155,4 +157,19 @@ def test_downgrade_de_la_revision_de_seed_vacia_la_tabla_y_upgrade_la_repuebla(
     assert _cuenta_filas() == 0, "downgrade del seed debe vaciar la tabla"
 
     _run_alembic("upgrade", SEED_REVISION)
+    assert _codes_en_orden() == CATALOGO_ESTADOS
+
+
+def test_upgrade_crea_projects_y_downgrade_la_elimina(clean_test_db: None) -> None:
+    assert not _has_table("projects")
+
+    _run_alembic("upgrade", "head")
+    assert _has_table("projects"), "upgrade head debe crear la tabla projects"
+    # La revisión de projects no toca el catálogo de estados.
+    assert _has_table("states")
+    assert _codes_en_orden() == CATALOGO_ESTADOS
+
+    _run_alembic("downgrade", SEED_REVISION)
+    assert not _has_table("projects"), "downgrade debe eliminar la tabla projects"
+    assert _has_table("states"), "downgrade de projects no debe tocar states"
     assert _codes_en_orden() == CATALOGO_ESTADOS

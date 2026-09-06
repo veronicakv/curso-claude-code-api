@@ -55,6 +55,7 @@ def client() -> Iterator[httpx.AsyncClient]:
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         conn.execute(text("DROP TABLE IF EXISTS states"))
+        conn.execute(text("DROP TABLE IF EXISTS projects"))
 
     env = dict(os.environ)
     env["DATABASE_URL"] = _test_db_url()
