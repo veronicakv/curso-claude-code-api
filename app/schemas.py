@@ -88,3 +88,26 @@ class TaskOut(BaseModel):
     description: str | None
     project_id: int
     state_id: int
+
+
+class TaskPatch(BaseModel):
+    """Cuerpo de ``PATCH /tasks/{id}`` (v1): todos los campos son opcionales.
+
+    Un campo ausente no cambia; ``description`` puede fijarse a ``null``. Anular
+    ``title``, ``project_id`` o ``state_id`` no está permitido: lo rechaza la
+    ruta con ``422``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    description: str | None = None
+    project_id: int | None = None
+    state_id: int | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _normaliza_title(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        return normalizar_texto_requerido(valor)

@@ -272,3 +272,92 @@ async def test_get_tasks_es_lista_en_la_raiz(client: httpx.AsyncClient) -> None:
         respuesta = await client.get("/tasks")
     assert respuesta.status_code == 200
     assert isinstance(respuesta.json(), list)
+
+
+# --- Incremento 4 (v1): PATCH /tasks/{id} y DELETE /tasks/{id} -------------
+
+
+async def test_patch_parcial_consistente(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        estados = (await client.get("/states")).json()
+        s1, s2 = estados[0]["id"], estados[1]["id"]
+        tid = await _crear_tarea(client, "Regar", pid, s1)
+
+        solo_desc = await client.patch(f"/tasks/{tid}", json={"description": "con manguera"})
+        assert solo_desc.status_code == 200
+        cuerpo = solo_desc.json()
+        assert cuerpo["title"] == "Regar"
+        assert cuerpo["description"] == "con manguera"
+        assert cuerpo["project_id"] == pid
+        assert cuerpo["state_id"] == s1
+
+        cambia_estado = await client.patch(f"/tasks/{tid}", json={"state_id": s2})
+        assert cambia_estado.status_code == 200
+        assert cambia_estado.json()["state_id"] == s2
+        assert (await client.get(f"/tasks/{tid}")).json()["state_id"] == s2
+
+        vacio = await client.patch(f"/tasks/{tid}", json={})
+        assert vacio.status_code == 200
+        assert vacio.json()["title"] == "Regar"
+
+        a_nulo = await client.patch(f"/tasks/{tid}", json={"description": None})
+        assert a_nulo.status_code == 200
+        assert a_nulo.json()["description"] is None
+
+
+async def test_patch_project_id_inexistente_es_404(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        tid = await _crear_tarea(client, "X", pid, sid)
+        respuesta = await client.patch(f"/tasks/{tid}", json={"project_id": 9999})
+    assert respuesta.status_code == 404
+    assert "detail" in respuesta.json()
+
+
+async def test_patch_title_invisible_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        tid = await _crear_tarea(client, "X", pid, sid)
+        respuesta = await client.patch(f"/tasks/{tid}", json={"title": "​"})
+    assert respuesta.status_code == 422
+    assert "detail" in respuesta.json()
+
+
+async def test_patch_clave_desconocida_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        tid = await _crear_tarea(client, "X", pid, sid)
+        respuesta = await client.patch(f"/tasks/{tid}", json={"prioridad": 1})
+    assert respuesta.status_code == 422
+    assert "detail" in respuesta.json()
+
+
+async def test_patch_task_inexistente_es_404(client: httpx.AsyncClient) -> None:
+    async with client:
+        respuesta = await client.patch("/tasks/9999", json={"title": "X"})
+    assert respuesta.status_code == 404
+    assert "detail" in respuesta.json()
+
+
+async def test_delete_task_204_y_get_posterior_404(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        tid = await _crear_tarea(client, "X", pid, sid)
+
+        borrado = await client.delete(f"/tasks/{tid}")
+        assert borrado.status_code == 204
+        assert borrado.content == b""
+
+        assert (await client.get(f"/tasks/{tid}")).status_code == 404
+
+
+async def test_delete_task_inexistente_es_404(client: httpx.AsyncClient) -> None:
+    async with client:
+        respuesta = await client.delete("/tasks/9999")
+    assert respuesta.status_code == 404
+    assert "detail" in respuesta.json()

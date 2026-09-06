@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.models import Project, State, Task
-from app.schemas import TaskIn, TaskOut
+from app.schemas import TaskIn, TaskOut, TaskPatch
 
 router = APIRouter()
 
@@ -66,3 +66,43 @@ def get_task(task_id: int, session: SessionDep) -> Task:
     if task is None:
         raise HTTPException(status_code=404, detail="tarea no encontrada")
     return task
+
+
+@router.patch("/tasks/{task_id}", response_model=TaskOut)
+def update_task(task_id: int, patch: TaskPatch, session: SessionDep) -> Task:
+    task = session.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="tarea no encontrada")
+
+    campos = patch.model_fields_set
+    if "title" in campos:
+        if patch.title is None:
+            raise HTTPException(status_code=422, detail="title no puede ser nulo")
+        task.title = patch.title
+    if "description" in campos:
+        task.description = patch.description
+    if "project_id" in campos:
+        if patch.project_id is None:
+            raise HTTPException(status_code=422, detail="project_id no puede ser nulo")
+        if session.get(Project, patch.project_id) is None:
+            raise HTTPException(status_code=404, detail="proyecto no encontrado")
+        task.project_id = patch.project_id
+    if "state_id" in campos:
+        if patch.state_id is None:
+            raise HTTPException(status_code=422, detail="state_id no puede ser nulo")
+        if session.get(State, patch.state_id) is None:
+            raise HTTPException(status_code=404, detail="estado no encontrado")
+        task.state_id = patch.state_id
+
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@router.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: int, session: SessionDep) -> None:
+    task = session.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="tarea no encontrada")
+    session.delete(task)
+    session.commit()
