@@ -40,3 +40,23 @@ class ProjectOut(BaseModel):
     id: int
     name: str
     description: str | None
+
+
+class ProjectPatch(BaseModel):
+    """Cuerpo de ``PATCH /projects/{id}``: todos los campos son opcionales.
+
+    Un campo ausente no cambia; ``description`` puede fijarse a ``null``. Anular
+    ``name`` no está permitido: lo rechaza la ruta con ``422``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    description: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _normaliza_name(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        return normalizar_texto_requerido(valor)

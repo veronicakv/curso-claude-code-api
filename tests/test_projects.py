@@ -163,3 +163,60 @@ async def test_post_sin_name_es_422(client: httpx.AsyncClient) -> None:
         respuesta = await client.post("/projects", json={"description": "sin nombre"})
     assert respuesta.status_code == 422
     assert "detail" in respuesta.json()
+
+
+# --- Incremento 3: PATCH /projects/{id} -------------------------------------
+
+
+async def test_patch_parcial(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = (await client.post("/projects", json={"name": "Casa"})).json()["id"]
+
+        con_desc = await client.patch(f"/projects/{pid}", json={"description": "reforma"})
+        assert con_desc.status_code == 200
+        assert con_desc.json()["name"] == "Casa"
+        assert con_desc.json()["description"] == "reforma"
+
+        a_nulo = await client.patch(f"/projects/{pid}", json={"description": None})
+        assert a_nulo.status_code == 200
+        assert a_nulo.json()["description"] is None
+
+        vacio = await client.patch(f"/projects/{pid}", json={})
+        assert vacio.status_code == 200
+        assert vacio.json()["name"] == "Casa"
+
+
+async def test_patch_name_valido_cambia_el_nombre(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = (await client.post("/projects", json={"name": "Casa"})).json()["id"]
+
+        parcheado = await client.patch(f"/projects/{pid}", json={"name": "Otro"})
+        assert parcheado.status_code == 200
+        assert set(parcheado.json().keys()) == {"id", "name", "description"}
+        assert parcheado.json()["name"] == "Otro"
+
+        assert (await client.get(f"/projects/{pid}")).json()["name"] == "Otro"
+
+
+async def test_patch_name_invisible_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = (await client.post("/projects", json={"name": "Casa"})).json()["id"]
+        respuesta = await client.patch(f"/projects/{pid}", json={"name": "​"})
+    assert respuesta.status_code == 422
+    assert "detail" in respuesta.json()
+
+
+async def test_patch_id_inexistente_es_404(client: httpx.AsyncClient) -> None:
+    async with client:
+        respuesta = await client.patch("/projects/9999", json={"name": "X"})
+    assert respuesta.status_code == 404
+    assert "detail" in respuesta.json()
+
+
+async def test_patch_con_clave_desconocida_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = (await client.post("/projects", json={"name": "Casa"})).json()["id"]
+        respuesta = await client.patch(f"/projects/{pid}", json={"nope": 1})
+    assert respuesta.status_code == 422
+    assert "detail" in respuesta.json()
+
