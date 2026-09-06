@@ -64,6 +64,7 @@ def clean_test_db() -> Iterator[None]:
 
     engine = create_engine(_test_db_url(), isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS tasks"))
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         conn.execute(text("DROP TABLE IF EXISTS states"))
         conn.execute(text("DROP TABLE IF EXISTS projects"))
@@ -73,6 +74,7 @@ def clean_test_db() -> Iterator[None]:
 
     engine = create_engine(_test_db_url(), isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS tasks"))
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         conn.execute(text("DROP TABLE IF EXISTS states"))
         conn.execute(text("DROP TABLE IF EXISTS projects"))
@@ -83,6 +85,17 @@ def _has_table(name: str) -> bool:
     engine = create_engine(_test_db_url())
     try:
         return inspect(engine).has_table(name)
+    finally:
+        engine.dispose()
+
+
+def _fk_ondelete(table: str, fk_name: str) -> str | None:
+    engine = create_engine(_test_db_url())
+    try:
+        for fk in inspect(engine).get_foreign_keys(table):
+            if fk["name"] == fk_name:
+                return (fk.get("options") or {}).get("ondelete")
+        return None
     finally:
         engine.dispose()
 
@@ -172,4 +185,35 @@ def test_upgrade_crea_projects_y_downgrade_la_elimina(clean_test_db: None) -> No
     _run_alembic("downgrade", SEED_REVISION)
     assert not _has_table("projects"), "downgrade debe eliminar la tabla projects"
     assert _has_table("states"), "downgrade de projects no debe tocar states"
+    assert _codes_en_orden() == CATALOGO_ESTADOS
+
+
+PROJECTS_REVISION = "3459cae2a91f"
+
+
+def test_upgrade_crea_tasks_y_downgrade_la_elimina(clean_test_db: None) -> None:
+    assert not _has_table("tasks")
+
+    _run_alembic("upgrade", "head")
+    assert _has_table("tasks"), "upgrade head debe crear la tabla tasks"
+
+    engine = create_engine(_test_db_url())
+    try:
+        cols = {c["name"] for c in inspect(engine).get_columns("tasks")}
+    finally:
+        engine.dispose()
+    assert cols == {"id", "title", "description", "project_id", "state_id"}
+
+    assert _fk_ondelete("tasks", "fk_tasks_project_id") == "RESTRICT"
+    assert _fk_ondelete("tasks", "fk_tasks_state_id") == "RESTRICT"
+
+    # La revisión de tasks no toca projects, states ni el catálogo.
+    assert _has_table("projects")
+    assert _has_table("states")
+    assert _codes_en_orden() == CATALOGO_ESTADOS
+
+    _run_alembic("downgrade", PROJECTS_REVISION)
+    assert not _has_table("tasks"), "downgrade debe eliminar la tabla tasks"
+    assert _has_table("projects"), "downgrade de tasks no debe tocar projects"
+    assert _has_table("states"), "downgrade de tasks no debe tocar states"
     assert _codes_en_orden() == CATALOGO_ESTADOS

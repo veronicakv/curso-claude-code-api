@@ -1,7 +1,8 @@
 """Rutas del recurso Proyectos.
 
-`DELETE /projects/{id}` responde `204`/`404`; la rama `409` (proyecto con
-tareas) queda para el incremento de Tasks, cuando exista la relación.
+`DELETE /projects/{id}` responde `204` sin tareas, `409` si las tiene y `404`
+si no existe. La FK `tasks.project_id ON DELETE RESTRICT` es la red de
+seguridad; el `409` legible lo da una consulta previa.
 """
 
 from typing import Annotated
@@ -11,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.models import Project
+from app.models import Project, Task
 from app.schemas import ProjectIn, ProjectOut, ProjectPatch
 
 router = APIRouter()
@@ -64,9 +65,14 @@ def update_project(project_id: int, patch: ProjectPatch, session: SessionDep) ->
 
 @router.delete("/projects/{project_id}", status_code=204)
 def delete_project(project_id: int, session: SessionDep) -> None:
-    """Borra el proyecto. `409` por tareas queda para el incremento de Tasks."""
+    """`204` si no tiene tareas, `409` si las tiene, `404` si no existe."""
     project = session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="proyecto no encontrado")
+    tiene_tareas = session.scalar(
+        select(Task.id).where(Task.project_id == project_id).limit(1)
+    )
+    if tiene_tareas is not None:
+        raise HTTPException(status_code=409, detail="el proyecto tiene tareas")
     session.delete(project)
     session.commit()
