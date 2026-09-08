@@ -14,6 +14,12 @@ Esta skill **redacta un reparto en commits y espera tu aprobación**. No ejecuta
 `git add` ni `git commit` por su cuenta, no hace `push`, no reescribe historia ya
 publicada y no descarta cambios. Si el árbol está limpio, lo dice y termina.
 
+**Nunca reescribe código.** Cada commit se arma exclusivamente con `git add`
+—completo o `git add -p`— sobre el cambio que ya existe en el árbol de trabajo.
+La skill no edita, no reformatea, no reordena ni una sola línea de ningún
+archivo: solo agrupa y confirma lo que ya está. Si el reparto necesitara tocar
+código para funcionar, es que el reparto está mal planteado.
+
 ## 1. Parte del estado real, no del supuesto
 
 Lo primero, siempre, es leer el estado del árbol **en el momento de invocar la
@@ -45,9 +51,10 @@ que devuelven los comandos.
 - Cada commit hace **una sola cosa**: una capacidad, un arreglo, un renombrado,
   un ajuste de documentación, una migración. Si el mensaje necesita un "y" para
   describir el commit, probablemente son dos.
-- Un mismo archivo puede repartirse entre commits (staging por hunks) si mezcla
-  intenciones. Un cambio pequeño y transversal que varias piezas necesitan (por
-  ejemplo un import) va con el primer commit que lo requiere.
+- Un mismo archivo puede repartirse entre commits con `git add -p` (staging por
+  hunks) si mezcla intenciones; se seleccionan los hunks que ya existen, no se
+  edita el archivo. Un cambio pequeño y transversal que varias piezas necesitan
+  (por ejemplo un import) va con el primer commit que lo requiere.
 - No mezcles cambio de comportamiento con reformateo o renombrado masivo en el
   mismo commit.
 
@@ -92,6 +99,10 @@ prefijo, mensaje propuesto y con qué se comprueba— y **espera aprobación
 explícita**. No ejecutas `git add` ni `git commit` hasta que se apruebe. Si se
 piden cambios, reajusta y vuelve a presentar.
 
+Al confirmar, cada commit se monta solo con `git add` / `git add -p` sobre lo que
+ya hay en el árbol, seguido de `git commit`. Ninguna otra operación sobre los
+archivos.
+
 ## Cómo entregar
 
 1. Inyecta `git status --short` y `git diff --stat HEAD`; lee el mapa.
@@ -100,4 +111,5 @@ piden cambios, reajusta y vuelve a presentar.
 3. Ordena los grupos para que cada commit deje un estado comprobable.
 4. Redacta prefijo y mensaje de cada commit según su intención.
 5. Presenta el reparto y espera aprobación. Solo entonces confirmas, un commit
-   cada vez.
+   cada vez, armando cada uno únicamente con `git add` / `git add -p` sobre el
+   cambio que ya existe en el árbol.
