@@ -106,6 +106,21 @@ Campos: `id`, `title`, `description` opcional, `project_id`, `state_id`.
 | `PATCH /tasks/{id}` | `200` con actualización parcial consistente |
 | `DELETE /tasks/{id}` | `204` sin cuerpo |
 
+## Tareas v2: Prioridad
+
+Se añade `priority`, entero opcional con valores `1`, `2` o `3`, donde `1` es la
+máxima prioridad y `3` la mínima. Omitirlo al crear guarda `null` y conserva
+compatibilidad v1.
+
+- `POST /tasks`: `priority` ausente ⇒ `null`. Un valor fuera de `1..3` o no
+  entero se rechaza con `422`.
+- `PATCH /tasks/{id}`: `priority` ausente no modifica el valor actual;
+  `priority: null` lo fija a `null`; un valor fuera de `1..3` se rechaza con
+  `422`.
+
+Fuera de alcance: orden por prioridad en `GET /tasks` y una prioridad por
+defecto distinta de `null`.
+
 ## Tareas v2: Fechas Límite
 
 Se añade `due_at`, opcional, con zona horaria y normalizado a UTC. Omitirlo
@@ -130,14 +145,15 @@ sobra rompe a quien consuma la API igual que uno que falta.
 // Proyecto
 {"id": 1, "name": "Casa", "description": null}
 
-// Tarea (v2; en v1, sin due_at)
+// Tarea (v2; en v1, sin due_at ni priority)
 {
   "id": 1,
   "title": "Regar las plantas",
   "description": null,
   "project_id": 1,
   "state_id": 1,
-  "due_at": "2026-03-01T09:00:00Z"
+  "due_at": "2026-03-01T09:00:00Z",
+  "priority": 2
 }
 ```
 
@@ -163,5 +179,6 @@ Tres detalles que deciden si dos implementaciones son intercambiables:
 - Migración desde base vacía y rollback de v2.
 - El catálogo de estados existe tras migrar, y migrar dos veces no lo duplica.
 - `due_at` omitido, válido, sin zona, vencido, futuro y tarea hecha.
+- `priority` omitido, válido (1, 2, 3), fuera de rango (0, 4) y `null` en PATCH.
 
 Los tests pueden incluir casos adicionales. No pueden debilitar estas invariantes.
