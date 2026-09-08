@@ -4,8 +4,7 @@
 
 - `docs/contrato-api.md` define el comportamiento observable (códigos de estado,
   esquemas de respuesta y de error, orden de colecciones, normalización de `title`,
-  reglas de `due_at`). Léelo antes de implementar o modificar un endpoint y cúmplelo
-  al pie de la letra.
+  reglas de `due_at`).
 - `docs/decisiones-ingenieria.md` recoge las decisiones de ingeniería del equipo
   que no se deducen del código.
 - `README.md` tiene los comandos canónicos del repositorio.
