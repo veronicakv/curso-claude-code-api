@@ -34,7 +34,8 @@ class Task(Base):
     """Tarea (v2). El esquema lo fijan las migraciones.
 
     ``due_at`` es opcional y se guarda con zona horaria; la aplicación lo
-    normaliza a UTC antes de persistir.
+    normaliza a UTC antes de persistir. ``priority`` es un entero opcional
+    1..3 (1 = máxima, 3 = mínima).
     """
 
     __tablename__ = "tasks"
@@ -51,3 +52,4 @@ class Task(Base):
     due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    priority: Mapped[int | None] = mapped_column(Integer, nullable=True)

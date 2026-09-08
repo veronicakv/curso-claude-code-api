@@ -6,7 +6,7 @@ rompe a quien consuma la API igual que uno que falta.
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.text import normalizar_texto_requerido
 
@@ -82,6 +82,9 @@ class TaskIn(BaseModel):
 
     ``due_at`` es opcional; omitirlo conserva compatibilidad v1. Con zona
     horaria se normaliza a UTC; sin zona se rechaza con ``422``.
+
+    ``priority`` es un entero opcional 1..3; omitirlo guarda ``null``. Un valor
+    fuera de rango se rechaza con ``422``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -91,6 +94,7 @@ class TaskIn(BaseModel):
     project_id: int
     state_id: int
     due_at: datetime | None = None
+    priority: int | None = Field(default=None, ge=1, le=3)
 
     @field_validator("title")
     @classmethod
@@ -104,10 +108,11 @@ class TaskIn(BaseModel):
 
 
 class TaskOut(BaseModel):
-    """Tarea que devuelve la API (v2): incluye ``due_at``.
+    """Tarea que devuelve la API (v2): incluye ``due_at`` y ``priority``.
 
     ``due_at`` se serializa siempre en UTC, con sufijo ``Z`` y sin
     microsegundos: ``2026-03-01T09:00:00Z``. Ausente se devuelve como ``null``.
+    ``priority`` es ``int`` (1..3) o ``null``.
     """
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
@@ -118,6 +123,7 @@ class TaskOut(BaseModel):
     project_id: int
     state_id: int
     due_at: datetime | None
+    priority: int | None
 
     @field_serializer("due_at")
     def _serializa_due_at(self, valor: datetime | None) -> str | None:
@@ -134,9 +140,10 @@ class TaskOut(BaseModel):
 class TaskPatch(BaseModel):
     """Cuerpo de ``PATCH /tasks/{id}`` (v2): todos los campos son opcionales.
 
-    Un campo ausente no cambia; ``description`` y ``due_at`` pueden fijarse a
-    ``null``. Anular ``title``, ``project_id`` o ``state_id`` no está permitido:
-    lo rechaza la ruta con ``422``. Un ``due_at`` sin zona horaria también.
+    Un campo ausente no cambia; ``description``, ``due_at`` y ``priority`` pueden
+    fijarse a ``null``. Anular ``title``, ``project_id`` o ``state_id`` no está
+    permitido: lo rechaza la ruta con ``422``. Un ``due_at`` sin zona horaria
+    también, y un ``priority`` fuera de 1..3.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -146,6 +153,7 @@ class TaskPatch(BaseModel):
     project_id: int | None = None
     state_id: int | None = None
     due_at: datetime | None = None
+    priority: int | None = Field(default=None, ge=1, le=3)
 
     @field_validator("title")
     @classmethod

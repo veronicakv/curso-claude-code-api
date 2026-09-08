@@ -1,7 +1,7 @@
 """Rutas del recurso Tareas (v2).
 
-Incluye ``due_at`` (opcional, normalizado a UTC) y el filtro
-``GET /tasks?overdue=true``.
+Incluye ``due_at`` (opcional, normalizado a UTC), ``priority`` (entero opcional
+1..3) y el filtro ``GET /tasks?overdue=true``.
 """
 
 from datetime import UTC, datetime
@@ -37,6 +37,7 @@ def create_task(payload: TaskIn, session: SessionDep) -> Task:
         project_id=payload.project_id,
         state_id=payload.state_id,
         due_at=payload.due_at,
+        priority=payload.priority,
     )
     session.add(task)
     session.commit()
@@ -110,6 +111,8 @@ def update_task(task_id: int, patch: TaskPatch, session: SessionDep) -> Task:
         task.state_id = patch.state_id
     if "due_at" in campos:
         task.due_at = patch.due_at
+    if "priority" in campos:
+        task.priority = patch.priority
 
     session.commit()
     session.refresh(task)
