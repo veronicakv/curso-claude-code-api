@@ -189,20 +189,25 @@ def test_upgrade_crea_projects_y_downgrade_la_elimina(clean_test_db: None) -> No
 
 
 PROJECTS_REVISION = "3459cae2a91f"
+TASKS_V1_REVISION = "26736e68b43a"
+TASKS_V2_REVISION = "c37bf9acde41"
+
+
+def _cols(table: str) -> set[str]:
+    engine = create_engine(_test_db_url())
+    try:
+        return {c["name"] for c in inspect(engine).get_columns(table)}
+    finally:
+        engine.dispose()
 
 
 def test_upgrade_crea_tasks_y_downgrade_la_elimina(clean_test_db: None) -> None:
     assert not _has_table("tasks")
 
-    _run_alembic("upgrade", "head")
-    assert _has_table("tasks"), "upgrade head debe crear la tabla tasks"
+    _run_alembic("upgrade", TASKS_V1_REVISION)
+    assert _has_table("tasks"), "la revisión de tasks v1 debe crear la tabla"
 
-    engine = create_engine(_test_db_url())
-    try:
-        cols = {c["name"] for c in inspect(engine).get_columns("tasks")}
-    finally:
-        engine.dispose()
-    assert cols == {"id", "title", "description", "project_id", "state_id"}
+    assert _cols("tasks") == {"id", "title", "description", "project_id", "state_id"}
 
     assert _fk_ondelete("tasks", "fk_tasks_project_id") == "RESTRICT"
     assert _fk_ondelete("tasks", "fk_tasks_state_id") == "RESTRICT"
@@ -217,3 +222,37 @@ def test_upgrade_crea_tasks_y_downgrade_la_elimina(clean_test_db: None) -> None:
     assert _has_table("projects"), "downgrade de tasks no debe tocar projects"
     assert _has_table("states"), "downgrade de tasks no debe tocar states"
     assert _codes_en_orden() == CATALOGO_ESTADOS
+
+
+def test_v2_upgrade_anade_due_at_y_downgrade_lo_quita(clean_test_db: None) -> None:
+    _run_alembic("upgrade", TASKS_V1_REVISION)
+    assert "due_at" not in _cols("tasks")
+
+    _run_alembic("upgrade", TASKS_V2_REVISION)
+    assert _cols("tasks") == {
+        "id",
+        "title",
+        "description",
+        "project_id",
+        "state_id",
+        "due_at",
+    }
+
+    engine = create_engine(_test_db_url())
+    try:
+        col = next(c for c in inspect(engine).get_columns("tasks") if c["name"] == "due_at")
+    finally:
+        engine.dispose()
+    assert col["nullable"] is True
+    # TIMESTAMP WITH TIME ZONE: SQLAlchemy lo refleja como DateTime(timezone=True).
+    assert getattr(col["type"], "timezone", False) is True
+
+    # El rollback de v2 vuelve exactamente al esquema v1, sin tocar el catálogo.
+    _run_alembic("downgrade", TASKS_V1_REVISION)
+    assert _cols("tasks") == {"id", "title", "description", "project_id", "state_id"}
+    assert _codes_en_orden() == CATALOGO_ESTADOS
+
+
+def test_upgrade_head_deja_tasks_en_v2(clean_test_db: None) -> None:
+    _run_alembic("upgrade", "head")
+    assert "due_at" in _cols("tasks"), "head debe incluir la columna due_at (v2)"
