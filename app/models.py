@@ -1,6 +1,8 @@
 """Modelos ORM de la capa de datos (SQLAlchemy 2.x)."""
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -29,7 +31,11 @@ class Project(Base):
 
 
 class Task(Base):
-    """Tarea (v1). El esquema lo fijan las migraciones; ``due_at`` llega en v2."""
+    """Tarea (v2). El esquema lo fijan las migraciones.
+
+    ``due_at`` es opcional y se guarda con zona horaria; la aplicación lo
+    normaliza a UTC antes de persistir.
+    """
 
     __tablename__ = "tasks"
 
@@ -41,4 +47,7 @@ class Task(Base):
     )
     state_id: Mapped[int] = mapped_column(
         ForeignKey("states.id", ondelete="RESTRICT"), nullable=False
+    )
+    due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

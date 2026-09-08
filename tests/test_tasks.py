@@ -85,6 +85,7 @@ def client() -> Iterator[httpx.AsyncClient]:
 
 
 TASK_KEYS_V1 = {"id", "title", "description", "project_id", "state_id"}
+TASK_KEYS_V2 = TASK_KEYS_V1 | {"due_at"}
 
 
 async def _crear_proyecto(client: httpx.AsyncClient, name: str = "Casa") -> int:
@@ -108,16 +109,17 @@ async def test_post_crea_y_get_por_id(client: httpx.AsyncClient) -> None:
         )
         assert creado.status_code == 201
         cuerpo = creado.json()
-        assert set(cuerpo.keys()) == TASK_KEYS_V1
+        assert set(cuerpo.keys()) == TASK_KEYS_V2
         assert isinstance(cuerpo["id"], int) and cuerpo["id"] > 0
         assert cuerpo["title"] == "Regar"
         assert cuerpo["description"] is None
         assert cuerpo["project_id"] == pid
         assert cuerpo["state_id"] == sid
+        assert cuerpo["due_at"] is None
 
         obtenido = await client.get(f"/tasks/{cuerpo['id']}")
         assert obtenido.status_code == 200
-        assert set(obtenido.json().keys()) == TASK_KEYS_V1
+        assert set(obtenido.json().keys()) == TASK_KEYS_V2
 
 
 async def test_post_project_id_inexistente_es_404(client: httpx.AsyncClient) -> None:
@@ -361,3 +363,189 @@ async def test_delete_task_inexistente_es_404(client: httpx.AsyncClient) -> None
         respuesta = await client.delete("/tasks/9999")
     assert respuesta.status_code == 404
     assert "detail" in respuesta.json()
+
+
+# --- Incremento 5 (v2): due_at y filtro overdue --------------------------------
+
+
+async def _state_id_por_code(client: httpx.AsyncClient, code: str) -> int:
+    estados = (await client.get("/states")).json()
+    return next(e["id"] for e in estados if e["code"] == code)
+
+
+async def test_post_due_at_omitido_es_null(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        creado = await client.post(
+            "/tasks", json={"title": "Sin fecha", "project_id": pid, "state_id": sid}
+        )
+        assert creado.status_code == 201
+        assert creado.json()["due_at"] is None
+
+
+async def test_post_due_at_con_zona_se_normaliza_a_utc_con_z(
+    client: httpx.AsyncClient,
+) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        creado = await client.post(
+            "/tasks",
+            json={
+                "title": "Con fecha",
+                "project_id": pid,
+                "state_id": sid,
+                "due_at": "2026-03-01T11:00:00+02:00",
+            },
+        )
+        assert creado.status_code == 201
+        assert creado.json()["due_at"] == "2026-03-01T09:00:00Z"
+
+
+async def test_post_due_at_sin_zona_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        respuesta = await client.post(
+            "/tasks",
+            json={
+                "title": "Ambigua",
+                "project_id": pid,
+                "state_id": sid,
+                "due_at": "2026-03-01T09:00:00",
+            },
+        )
+    assert respuesta.status_code == 422
+    assert "detail" in respuesta.json()
+
+
+async def test_patch_due_at_se_fija_y_se_anula(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        tid = await _crear_tarea(client, "X", pid, sid)
+
+        fijado = await client.patch(
+            f"/tasks/{tid}", json={"due_at": "2026-05-01T00:00:00Z"}
+        )
+        assert fijado.status_code == 200
+        assert fijado.json()["due_at"] == "2026-05-01T00:00:00Z"
+
+        anulado = await client.patch(f"/tasks/{tid}", json={"due_at": None})
+        assert anulado.status_code == 200
+        assert anulado.json()["due_at"] is None
+
+
+async def test_patch_due_at_sin_zona_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        tid = await _crear_tarea(client, "X", pid, sid)
+        respuesta = await client.patch(
+            f"/tasks/{tid}", json={"due_at": "2026-05-01T00:00:00"}
+        )
+    assert respuesta.status_code == 422
+    assert "detail" in respuesta.json()
+
+
+async def test_overdue_true_solo_vencidas_no_hechas(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        pendiente = await _state_id_por_code(client, "PENDIENTE")
+        hecha = await _state_id_por_code(client, "HECHA")
+
+        # Vencida y no hecha: debe salir.
+        vencida = (
+            await client.post(
+                "/tasks",
+                json={
+                    "title": "vencida",
+                    "project_id": pid,
+                    "state_id": pendiente,
+                    "due_at": "2020-01-01T00:00:00Z",
+                },
+            )
+        ).json()["id"]
+        # Vencida pero hecha: no sale.
+        await client.post(
+            "/tasks",
+            json={
+                "title": "vencida hecha",
+                "project_id": pid,
+                "state_id": hecha,
+                "due_at": "2020-01-01T00:00:00Z",
+            },
+        )
+        # Futura: no sale.
+        await client.post(
+            "/tasks",
+            json={
+                "title": "futura",
+                "project_id": pid,
+                "state_id": pendiente,
+                "due_at": "2999-01-01T00:00:00Z",
+            },
+        )
+        # Sin fecha: no está vencida, no sale.
+        await client.post(
+            "/tasks",
+            json={"title": "sin fecha", "project_id": pid, "state_id": pendiente},
+        )
+
+        respuesta = await client.get("/tasks", params={"overdue": "true"})
+        assert respuesta.status_code == 200
+        assert [t["id"] for t in respuesta.json()] == [vencida]
+
+
+async def test_overdue_false_no_filtra(client: httpx.AsyncClient) -> None:
+    async with client:
+        pid = await _crear_proyecto(client)
+        sid = await _un_state_id(client)
+        await _crear_tarea(client, "a", pid, sid)
+        await _crear_tarea(client, "b", pid, sid)
+
+        con_flag = await client.get("/tasks", params={"overdue": "false"})
+        sin_flag = await client.get("/tasks")
+    assert con_flag.status_code == 200
+    assert [t["id"] for t in con_flag.json()] == [t["id"] for t in sin_flag.json()]
+
+
+async def test_overdue_combina_con_project_id(client: httpx.AsyncClient) -> None:
+    async with client:
+        p1 = await _crear_proyecto(client, "P1")
+        p2 = await _crear_proyecto(client, "P2")
+        pendiente = await _state_id_por_code(client, "PENDIENTE")
+
+        v1 = (
+            await client.post(
+                "/tasks",
+                json={
+                    "title": "v1",
+                    "project_id": p1,
+                    "state_id": pendiente,
+                    "due_at": "2020-01-01T00:00:00Z",
+                },
+            )
+        ).json()["id"]
+        await client.post(
+            "/tasks",
+            json={
+                "title": "v2",
+                "project_id": p2,
+                "state_id": pendiente,
+                "due_at": "2020-01-01T00:00:00Z",
+            },
+        )
+
+        respuesta = await client.get(
+            "/tasks", params={"overdue": "true", "project_id": p1}
+        )
+    assert respuesta.status_code == 200
+    assert [t["id"] for t in respuesta.json()] == [v1]
+
+
+async def test_overdue_valor_no_booleano_es_422(client: httpx.AsyncClient) -> None:
+    async with client:
+        respuesta = await client.get("/tasks", params={"overdue": "quizas"})
+    assert respuesta.status_code == 422
