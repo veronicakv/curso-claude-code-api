@@ -1,8 +1,10 @@
-"""Rutas del recurso Tareas (v1).
+"""Rutas del recurso Tareas (v2).
 
-`due_at` y `GET /tasks?overdue=true` llegan con Tareas v2; aquí no existen.
+Incluye ``due_at`` (opcional, normalizado a UTC) y el filtro
+``GET /tasks?overdue=true``.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,6 +36,7 @@ def create_task(payload: TaskIn, session: SessionDep) -> Task:
         description=payload.description,
         project_id=payload.project_id,
         state_id=payload.state_id,
+        due_at=payload.due_at,
     )
     session.add(task)
     session.commit()
@@ -46,17 +49,29 @@ def list_tasks(
     session: SessionDep,
     project_id: int | None = None,
     state_id: int | None = None,
+    overdue: bool | None = None,
 ) -> list[Task]:
     """Tareas ordenadas por ``id`` ascendente.
 
     ``project_id`` y ``state_id`` filtran, solos o combinados (AND). Filtrar por
     un id inexistente devuelve lista vacía, no ``404``.
+
+    ``overdue=true`` deja solo las tareas con ``due_at`` anterior al instante de
+    evaluación y estado distinto de ``HECHA``. Una tarea sin ``due_at`` nunca
+    está vencida. ``overdue=false`` no filtra.
     """
     stmt = select(Task).order_by(Task.id)
     if project_id is not None:
         stmt = stmt.where(Task.project_id == project_id)
     if state_id is not None:
         stmt = stmt.where(Task.state_id == state_id)
+    if overdue:
+        hecha_ids = select(State.id).where(State.code == "HECHA").scalar_subquery()
+        stmt = stmt.where(
+            Task.due_at.is_not(None),
+            Task.due_at < datetime.now(UTC),
+            Task.state_id.not_in(hecha_ids),
+        )
     return list(session.scalars(stmt).all())
 
 
@@ -93,6 +108,8 @@ def update_task(task_id: int, patch: TaskPatch, session: SessionDep) -> Task:
         if session.get(State, patch.state_id) is None:
             raise HTTPException(status_code=404, detail="estado no encontrado")
         task.state_id = patch.state_id
+    if "due_at" in campos:
+        task.due_at = patch.due_at
 
     session.commit()
     session.refresh(task)

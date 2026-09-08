@@ -4,9 +4,24 @@ El contrato exige los campos declarados, **ni más ni menos**: un campo de sobra
 rompe a quien consuma la API igual que uno que falta.
 """
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from datetime import UTC, datetime
+
+from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
 from app.text import normalizar_texto_requerido
+
+
+def _exige_zona(valor: datetime | None) -> datetime | None:
+    """Normaliza ``due_at`` a UTC. Una fecha sin zona es ambigua: ``422``.
+
+    El contrato no supone ninguna zona por su cuenta, así que un ``datetime``
+    naíf (sin ``tzinfo``) se rechaza en validación.
+    """
+    if valor is None:
+        return None
+    if valor.tzinfo is None or valor.tzinfo.utcoffset(valor) is None:
+        raise ValueError("due_at debe incluir zona horaria")
+    return valor.astimezone(UTC)
 
 
 class StateOut(BaseModel):
@@ -63,7 +78,11 @@ class ProjectPatch(BaseModel):
 
 
 class TaskIn(BaseModel):
-    """Cuerpo de ``POST /tasks`` (v1). ``title`` se normaliza antes de validar."""
+    """Cuerpo de ``POST /tasks`` (v2). ``title`` se normaliza antes de validar.
+
+    ``due_at`` es opcional; omitirlo conserva compatibilidad v1. Con zona
+    horaria se normaliza a UTC; sin zona se rechaza con ``422``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -71,15 +90,25 @@ class TaskIn(BaseModel):
     description: str | None = None
     project_id: int
     state_id: int
+    due_at: datetime | None = None
 
     @field_validator("title")
     @classmethod
     def _normaliza_title(cls, valor: str) -> str:
         return normalizar_texto_requerido(valor)
 
+    @field_validator("due_at")
+    @classmethod
+    def _normaliza_due_at(cls, valor: datetime | None) -> datetime | None:
+        return _exige_zona(valor)
+
 
 class TaskOut(BaseModel):
-    """Tarea que devuelve la API (v1): sin ``due_at``, que llega en v2."""
+    """Tarea que devuelve la API (v2): incluye ``due_at``.
+
+    ``due_at`` se serializa siempre en UTC, con sufijo ``Z`` y sin
+    microsegundos: ``2026-03-01T09:00:00Z``. Ausente se devuelve como ``null``.
+    """
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
@@ -88,14 +117,26 @@ class TaskOut(BaseModel):
     description: str | None
     project_id: int
     state_id: int
+    due_at: datetime | None
+
+    @field_serializer("due_at")
+    def _serializa_due_at(self, valor: datetime | None) -> str | None:
+        if valor is None:
+            return None
+        return (
+            valor.astimezone(UTC)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
 
 
 class TaskPatch(BaseModel):
-    """Cuerpo de ``PATCH /tasks/{id}`` (v1): todos los campos son opcionales.
+    """Cuerpo de ``PATCH /tasks/{id}`` (v2): todos los campos son opcionales.
 
-    Un campo ausente no cambia; ``description`` puede fijarse a ``null``. Anular
-    ``title``, ``project_id`` o ``state_id`` no está permitido: lo rechaza la
-    ruta con ``422``.
+    Un campo ausente no cambia; ``description`` y ``due_at`` pueden fijarse a
+    ``null``. Anular ``title``, ``project_id`` o ``state_id`` no está permitido:
+    lo rechaza la ruta con ``422``. Un ``due_at`` sin zona horaria también.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -104,6 +145,7 @@ class TaskPatch(BaseModel):
     description: str | None = None
     project_id: int | None = None
     state_id: int | None = None
+    due_at: datetime | None = None
 
     @field_validator("title")
     @classmethod
@@ -111,3 +153,8 @@ class TaskPatch(BaseModel):
         if valor is None:
             return None
         return normalizar_texto_requerido(valor)
+
+    @field_validator("due_at")
+    @classmethod
+    def _normaliza_due_at(cls, valor: datetime | None) -> datetime | None:
+        return _exige_zona(valor)
