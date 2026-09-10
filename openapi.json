@@ -90,6 +90,16 @@
               }
             }
           },
+          "404": {
+            "description": "Proyecto no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -137,6 +147,16 @@
               }
             }
           },
+          "404": {
+            "description": "Proyecto no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -167,6 +187,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "404": {
+            "description": "Proyecto no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El proyecto tiene tareas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -202,6 +242,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TaskOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tarea, proyecto o estado no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
                 }
               }
             }
@@ -326,6 +376,16 @@
               }
             }
           },
+          "404": {
+            "description": "Tarea, proyecto o estado no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -373,6 +433,16 @@
               }
             }
           },
+          "404": {
+            "description": "Tarea, proyecto o estado no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -402,6 +472,16 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "404": {
+            "description": "Tarea, proyecto o estado no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -464,6 +544,20 @@
   },
   "components": {
     "schemas": {
+      "ErrorDetail": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorDetail",
+        "description": "Cuerpo de error estable del contrato: ``{\"detail\": \"<mensaje>\"}``.\n\nSe declara en las rutas para que ``404`` y ``409`` figuren en la\nespecificación OpenAPI con esta forma, la misma que el contrato fija."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
