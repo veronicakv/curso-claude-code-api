@@ -13,11 +13,15 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.models import Project, State, Task
-from app.schemas import TaskIn, TaskOut, TaskPatch
+from app.schemas import ErrorDetail, TaskIn, TaskOut, TaskPatch
 
 router = APIRouter()
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+_NOT_FOUND = {
+    404: {"model": ErrorDetail, "description": "Tarea, proyecto o estado no encontrado"}
+}
 
 
 def _validar_referencias(session: Session, project_id: int, state_id: int) -> None:
@@ -28,7 +32,7 @@ def _validar_referencias(session: Session, project_id: int, state_id: int) -> No
         raise HTTPException(status_code=404, detail="estado no encontrado")
 
 
-@router.post("/tasks", status_code=201, response_model=TaskOut)
+@router.post("/tasks", status_code=201, response_model=TaskOut, responses=_NOT_FOUND)
 def create_task(payload: TaskIn, session: SessionDep) -> Task:
     _validar_referencias(session, payload.project_id, payload.state_id)
     task = Task(
@@ -76,7 +80,7 @@ def list_tasks(
     return list(session.scalars(stmt).all())
 
 
-@router.get("/tasks/{task_id}", response_model=TaskOut)
+@router.get("/tasks/{task_id}", response_model=TaskOut, responses=_NOT_FOUND)
 def get_task(task_id: int, session: SessionDep) -> Task:
     task = session.get(Task, task_id)
     if task is None:
@@ -84,7 +88,7 @@ def get_task(task_id: int, session: SessionDep) -> Task:
     return task
 
 
-@router.patch("/tasks/{task_id}", response_model=TaskOut)
+@router.patch("/tasks/{task_id}", response_model=TaskOut, responses=_NOT_FOUND)
 def update_task(task_id: int, patch: TaskPatch, session: SessionDep) -> Task:
     task = session.get(Task, task_id)
     if task is None:
@@ -119,7 +123,7 @@ def update_task(task_id: int, patch: TaskPatch, session: SessionDep) -> Task:
     return task
 
 
-@router.delete("/tasks/{task_id}", status_code=204)
+@router.delete("/tasks/{task_id}", status_code=204, responses=_NOT_FOUND)
 def delete_task(task_id: int, session: SessionDep) -> None:
     task = session.get(Task, task_id)
     if task is None:

@@ -13,11 +13,17 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.models import Project, Task
-from app.schemas import ProjectIn, ProjectOut, ProjectPatch
+from app.schemas import ErrorDetail, ProjectIn, ProjectOut, ProjectPatch
 
 router = APIRouter()
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+_NOT_FOUND = {404: {"model": ErrorDetail, "description": "Proyecto no encontrado"}}
+_NOT_FOUND_OR_CONFLICT = {
+    **_NOT_FOUND,
+    409: {"model": ErrorDetail, "description": "El proyecto tiene tareas"},
+}
 
 
 @router.post("/projects", status_code=201, response_model=ProjectOut)
@@ -36,7 +42,7 @@ def list_projects(session: SessionDep) -> list[Project]:
     return list(session.scalars(stmt).all())
 
 
-@router.get("/projects/{project_id}", response_model=ProjectOut)
+@router.get("/projects/{project_id}", response_model=ProjectOut, responses=_NOT_FOUND)
 def get_project(project_id: int, session: SessionDep) -> Project:
     project = session.get(Project, project_id)
     if project is None:
@@ -44,7 +50,7 @@ def get_project(project_id: int, session: SessionDep) -> Project:
     return project
 
 
-@router.patch("/projects/{project_id}", response_model=ProjectOut)
+@router.patch("/projects/{project_id}", response_model=ProjectOut, responses=_NOT_FOUND)
 def update_project(project_id: int, patch: ProjectPatch, session: SessionDep) -> Project:
     project = session.get(Project, project_id)
     if project is None:
@@ -63,7 +69,7 @@ def update_project(project_id: int, patch: ProjectPatch, session: SessionDep) ->
     return project
 
 
-@router.delete("/projects/{project_id}", status_code=204)
+@router.delete("/projects/{project_id}", status_code=204, responses=_NOT_FOUND_OR_CONFLICT)
 def delete_project(project_id: int, session: SessionDep) -> None:
     """`204` si no tiene tareas, `409` si las tiene, `404` si no existe."""
     project = session.get(Project, project_id)

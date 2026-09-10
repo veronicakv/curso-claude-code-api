@@ -11,6 +11,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 from app.text import normalizar_texto_requerido
 
 
+class ErrorDetail(BaseModel):
+    """Cuerpo de error estable del contrato: ``{"detail": "<mensaje>"}``.
+
+    Se declara en las rutas para que ``404`` y ``409`` figuren en la
+    especificación OpenAPI con esta forma, la misma que el contrato fija.
+    """
+
+    detail: str
+
+
 def _exige_zona(valor: datetime | None) -> datetime | None:
     """Normaliza ``due_at`` a UTC. Una fecha sin zona es ambigua: ``422``.
 
