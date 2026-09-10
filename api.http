@@ -1,0 +1,218 @@
+### api.http — recorrido del contrato (docs/contrato-api.md)
+### Ejecutar en orden. Requiere la API en marcha: uv run uvicorn app.main:app
+### y docker compose up -d db, con las migraciones aplicadas (alembic upgrade head).
+
+@host = http://127.0.0.1:8000
+@contentType = application/json
+
+### ─────────────────────────────────────────────────────────────
+### Salud
+### ─────────────────────────────────────────────────────────────
+
+### GET /health → 200 {"status": "ok"}
+GET {{host}}/health
+
+### ─────────────────────────────────────────────────────────────
+### Estados — catálogo cerrado, solo lectura
+### ─────────────────────────────────────────────────────────────
+
+### GET /states → 200, lista ordenada por campo de orden e id.
+### De aquí salen los state_id que usan las tareas: [0] es PENDIENTE, [3] es HECHA.
+# @name states
+GET {{host}}/states
+
+### ─────────────────────────────────────────────────────────────
+### Proyectos — se crea primero el que las tareas necesitan
+### ─────────────────────────────────────────────────────────────
+
+### POST /projects → 201. Proyecto base para el resto del recorrido.
+# @name proyecto
+POST {{host}}/projects
+Content-Type: {{contentType}}
+
+{
+  "name": "Casa",
+  "description": "Tareas domésticas"
+}
+
+### POST /projects → 201. Segundo proyecto, se borrará al final (204).
+# @name proyectoBorrable
+POST {{host}}/projects
+Content-Type: {{contentType}}
+
+{
+  "name": "Proyecto temporal"
+}
+
+### GET /projects → 200, lista en la raíz ordenada por id ascendente.
+GET {{host}}/projects
+
+### GET /projects/{id} → 200 con esquema exacto {id, name, description}.
+GET {{host}}/projects/{{proyecto.response.body.$.id}}
+
+### PATCH /projects/{id} → 200, actualización parcial (description a null).
+PATCH {{host}}/projects/{{proyecto.response.body.$.id}}
+Content-Type: {{contentType}}
+
+{
+  "description": null
+}
+
+### ─────────────────────────────────────────────────────────────
+### Tareas v1 — sobre el proyecto y el estado ya creados
+### ─────────────────────────────────────────────────────────────
+
+### POST /tasks → 201. Tarea v1 mínima (sin due_at ni priority ⇒ null).
+# @name tarea
+POST {{host}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "Regar las plantas",
+  "project_id": {{proyecto.response.body.$.id}},
+  "state_id": {{states.response.body.$[0].id}}
+}
+
+### POST /tasks → 201. Segunda tarea, en estado HECHA, para el filtro overdue.
+# @name tareaHecha
+POST {{host}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "Comprar tierra",
+  "description": "Sustrato universal",
+  "project_id": {{proyecto.response.body.$.id}},
+  "state_id": {{states.response.body.$[3].id}}
+}
+
+### GET /tasks → 200, todas las tareas, orden por id ascendente.
+GET {{host}}/tasks
+
+### GET /tasks/{id} → 200 con esquema exacto de tarea.
+GET {{host}}/tasks/{{tarea.response.body.$.id}}
+
+### GET /tasks?project_id=&state_id= → 200, filtros combinados (AND).
+GET {{host}}/tasks?project_id={{proyecto.response.body.$.id}}&state_id={{states.response.body.$[0].id}}
+
+### ─────────────────────────────────────────────────────────────
+### Tareas v2 — priority y due_at sobre la misma tarea
+### ─────────────────────────────────────────────────────────────
+
+### PATCH /tasks/{id} → 200. Fija priority (1..3) y una due_at vencida (con zona).
+PATCH {{host}}/tasks/{{tarea.response.body.$.id}}
+Content-Type: {{contentType}}
+
+{
+  "priority": 1,
+  "due_at": "2020-01-01T09:00:00Z"
+}
+
+### PATCH /tasks/{id} → 200. priority: null vuelve a dejarla sin prioridad.
+PATCH {{host}}/tasks/{{tarea.response.body.$.id}}
+Content-Type: {{contentType}}
+
+{
+  "priority": null
+}
+
+### GET /tasks?overdue=true → 200. Devuelve la tarea vencida y NO la que está HECHA.
+GET {{host}}/tasks?overdue=true
+
+### ─────────────────────────────────────────────────────────────
+### Casos de error
+### ─────────────────────────────────────────────────────────────
+
+### Estados: no admite escritura → 405 (no hay POST /states en el contrato).
+POST {{host}}/states
+Content-Type: {{contentType}}
+
+{
+  "code": "NUEVO"
+}
+
+### Proyectos — id inexistente → 404 {"detail": ...}
+GET {{host}}/projects/999999
+
+### Proyectos — validación: name solo con invisible U+200B → 422
+POST {{host}}/projects
+Content-Type: {{contentType}}
+
+{
+  "name": "​"
+}
+
+### Proyectos — clave desconocida en el cuerpo → 422 (extra="forbid")
+POST {{host}}/projects
+Content-Type: {{contentType}}
+
+{
+  "name": "Con extra",
+  "color": "rojo"
+}
+
+### Tareas — id inexistente → 404 {"detail": ...}
+GET {{host}}/tasks/999999
+
+### Tareas — proyecto inexistente al crear → 404 (no se crea implícitamente)
+POST {{host}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "Huérfana",
+  "project_id": 999999,
+  "state_id": {{states.response.body.$[0].id}}
+}
+
+### Tareas — validación: title vacío tras recortar → 422
+POST {{host}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "   ",
+  "project_id": {{proyecto.response.body.$.id}},
+  "state_id": {{states.response.body.$[0].id}}
+}
+
+### Tareas — priority fuera de rango (4) → 422
+POST {{host}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "Prioridad inválida",
+  "project_id": {{proyecto.response.body.$.id}},
+  "state_id": {{states.response.body.$[0].id}},
+  "priority": 4
+}
+
+### Tareas — due_at sin zona → 422 (fecha ambigua, el contrato no supone ninguna)
+POST {{host}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "Sin zona",
+  "project_id": {{proyecto.response.body.$.id}},
+  "state_id": {{states.response.body.$[0].id}},
+  "due_at": "2026-03-01T09:00:00"
+}
+
+### Tareas — overdue con un valor no booleano → 422 (false/1 se aceptan y no filtran)
+GET {{host}}/tasks?overdue=quizas
+
+### Proyectos — DELETE con tareas → 409 (el proyecto "Casa" tiene tareas)
+DELETE {{host}}/projects/{{proyecto.response.body.$.id}}
+
+### ─────────────────────────────────────────────────────────────
+### Limpieza — deja la base como estaba
+### ─────────────────────────────────────────────────────────────
+
+### DELETE /tasks/{id} → 204 sin cuerpo
+DELETE {{host}}/tasks/{{tarea.response.body.$.id}}
+
+### DELETE /tasks/{id} → 204 sin cuerpo
+DELETE {{host}}/tasks/{{tareaHecha.response.body.$.id}}
+
+### DELETE /projects/{id} → 204, ya sin tareas
+DELETE {{host}}/projects/{{proyecto.response.body.$.id}}
+
+### DELETE /projects/{id} → 204, el proyecto temporal
+DELETE {{host}}/projects/{{proyectoBorrable.response.body.$.id}}

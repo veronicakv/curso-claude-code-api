@@ -1,6 +1,6 @@
 # Mapa de onboarding — TaskFlow API
 
-Repo: `/mnt/g/cursoIA/curso-claude/curso-claude-code-api` · branch `main` · 2 commits · árbol de trabajo limpio.
+Repo: `/mnt/g/cursoIA/curso-claude/curso-claude-code-api` · branch `main` · árbol de trabajo limpio · API completa hasta Tareas v2 (Estados, CRUD de Proyectos y Tareas, `due_at`/`overdue`/`priority`); este mapa describe el punto de partida del curso, no el estado actual.
 
 ## Qué es hoy
 
@@ -15,7 +15,7 @@ FastAPI + Python 3.12 gestionado con `uv`. Estado actual del código: solo `GET 
 | El contrato de comportamiento observable vive en un solo documento | `docs/contrato-api.md:1-4` |
 | El documento "fija comportamiento observable; la estructura interna queda abierta salvo restricciones de seguridad, migración y verificación" | `docs/contrato-api.md:3-4` |
 | Los códigos de estado de las tablas son parte del contrato: "son lo que afirman los tests, y lo que la sesión 10 compara al revisar. No los cambies sin cambiar antes este documento" | `docs/contrato-api.md:11-13` |
-| La "Matriz Mínima de Tests" enumera invariantes que los tests no pueden debilitar | `docs/contrato-api.md:152-167` |
+| La "Matriz Mínima de Tests" enumera invariantes que los tests no pueden debilitar | `docs/contrato-api.md:168-184` |
 | El código actual cumple solo la sección "Salud" | `app/main.py:6-8` vs `docs/contrato-api.md:44-54` |
 | El README describe el mismo `GET /health` y nombra la app ASGI como `app.main:app` | `README.md:5-6` |
 
@@ -97,10 +97,10 @@ Elegir e incorporar la herramienta de migraciones y el driver de PostgreSQL es u
 | D3 | **Driver de PostgreSQL** (`psycopg` v3, `psycopg2`, `asyncpg`) y si el acceso será sync o async. | El único indicio de async es `asyncio_mode=auto` en pytest y los endpoints `async def`; no hay driver en el lock. |
 | D4 | **Cómo se disparan las migraciones al arrancar** (comando manual `alembic upgrade head`, hook de startup en FastAPI, entrypoint de Docker). | El contrato dice "en cada `upgrade`, en cualquier entorno" (`contrato-api.md:72`) pero no fija el mecanismo; el README no incluye ningún comando de migración. |
 | D5 | **Config de conexión en la app** (Pydantic Settings, `os.environ` directo, `pydantic-settings`). | Solo existen las variables `POSTGRES_*` en `.env.example`; `app/main.py` no lee configuración alguna. |
-| D6 | **`docs/glosario.md`** — el contrato enlaza `../docs/glosario.md#idempotente` (`contrato-api.md:79`) pero el archivo **no existe** (`ls docs/` → solo `contrato-api.md` y este archivo). Falta crearlo o corregir el enlace. |
+| D6 | **`docs/glosario.md`** — el contrato enlaza `../docs/glosario.md#idempotente` (`contrato-api.md:79`) pero el archivo **no existe** (`ls docs/` → solo `contrato-api.md` y este archivo). Resuelto: `docs/glosario.md` creado con el término `idempotente`. |
 | D7 | **Base de datos para la suite de tests**: ¿la misma instancia Docker `db`, una base separada, fixtures que crean/tumban esquema por test? No hay configuración de test-db ni fixtures (`tests/` solo tiene `test_health.py` y un `__init__.py` vacío). |
 | D8 | **Estrategia de puerto/URL de la app** en producción/CI: el README solo cubre `127.0.0.1:8000` local sin `--host 0.0.0.0`. |
-| D9 | **Precedencia formal README ↔ contrato** ante contradicción (asumida a favor del contrato, sin regla escrita). |
+| D9 | **Precedencia formal README ↔ contrato** ante contradicción. Resuelto: `CLAUDE.md` fija que ante contradicción gana el contrato. |
 
 ---
 

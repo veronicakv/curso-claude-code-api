@@ -1,9 +1,11 @@
 # TaskFlow API
 
-Base de una API FastAPI administrada con [uv](https://docs.astral.sh/uv/) y Python 3.12.
+API REST de gestión de tareas construida con FastAPI, [uv](https://docs.astral.sh/uv/)
+y Python 3.12, con persistencia en PostgreSQL y migraciones Alembic.
 
-En esta primera entrega la aplicacion solo expone `GET /health`, que responde
-`200` con `{"status": "ok"}`. La aplicacion ASGI se expone como `app.main:app`.
+El comportamiento observable (endpoints, códigos de estado, esquemas de respuesta
+y de error) está especificado en [`docs/contrato-api.md`](docs/contrato-api.md).
+La aplicación ASGI se expone como `app.main:app`.
 
 ## Requisitos
 
@@ -11,29 +13,51 @@ En esta primera entrega la aplicacion solo expone `GET /health`, que responde
 - uv.
 - Docker con Compose.
 
-## Configuracion
+## Puesta en marcha
 
-Las variables de PostgreSQL estan documentadas en `.env.example`. Copia ese
-archivo a `.env` y ajusta los valores si lo necesitas; `compose.yaml` tambien
-funciona sin `.env` usando valores locales por defecto.
-
-## Recorrido canonico
-
-Ejecuta estos comandos, en orden, desde la raiz del repositorio:
+Ejecuta estos pasos en orden, desde la raíz del repositorio:
 
 ```sh
-uv sync --locked
-uv run ruff check .
-uv run pytest -q
-docker compose up
-uv run uvicorn app.main:app
-docker compose down
+cp .env.example .env                      # variables de PostgreSQL (valores locales ficticios)
+uv sync --locked                          # instala las dependencias según uv.lock
+docker compose up -d db                   # levanta PostgreSQL 18 (servicio db) con healthcheck
+uv run alembic upgrade head               # crea el esquema y siembra el catálogo de estados
+uv run uvicorn app.main:app               # sirve la API en http://127.0.0.1:8000
 ```
 
-- `uv sync --locked` instala las dependencias exactamente segun `uv.lock`.
-- `uv run ruff check .` pasa el linter.
-- `uv run pytest -q` ejecuta la suite de tests.
-- `docker compose up` levanta el servicio `db` (PostgreSQL 18-alpine) con healthcheck.
-- `uv run uvicorn app.main:app` sirve la API en `http://127.0.0.1:8000`; comprueba
-  `http://127.0.0.1:8000/health`.
-- `docker compose down` detiene y elimina el servicio `db`.
+- `.env` no se versiona; `compose.yaml` también arranca sin él usando los mismos
+  valores por defecto.
+- `docker compose up -d db` deja la base en segundo plano; espera unos segundos a
+  que el healthcheck la marque `healthy` antes del paso siguiente.
+- `uv run alembic upgrade head` es idempotente: volver a ejecutarlo no duplica nada.
+- La API queda en primer plano; déjala corriendo en esta terminal y usa otra para
+  el paso siguiente. Párala con Ctrl-C.
+
+## Probar un endpoint
+
+Con la API corriendo, comprueba la salud:
+
+```sh
+curl http://127.0.0.1:8000/health          # -> {"status": "ok"}
+```
+
+Para ejercitar el resto de la API, [`api.http`](api.http) tiene una petición por
+cada método y ruta del contrato, en un orden en el que cada una se apoya en la
+anterior. Ábrelo con la extensión REST Client de VS Code (o equivalente) y lanza
+los bloques de arriba abajo.
+
+## Comprobaciones de desarrollo
+
+```sh
+uv run ruff check .                        # lint
+uv run pytest -q                           # tests (contra la base PostgreSQL real; no usa SQLite)
+```
+
+`uv run pytest -q` necesita el servicio `db` levantado; si PostgreSQL no está
+accesible, los tests que lo requieren fallan (no se omiten).
+
+## Parar
+
+```sh
+docker compose down                        # detiene y elimina el servicio db (el volumen pgdata se conserva)
+```
