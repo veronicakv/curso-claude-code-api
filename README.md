@@ -56,6 +56,16 @@ uv run pytest -q                           # tests (contra la base PostgreSQL re
 `uv run pytest -q` necesita el servicio `db` levantado; si PostgreSQL no está
 accesible, los tests que lo requieren fallan (no se omiten).
 
+## Especificación OpenAPI
+
+FastAPI genera el documento OpenAPI y lo sirve en `/openapi.json`, `/docs` y
+`/redoc` con la API corriendo. El archivo [`openapi.json`](openapi.json) de la
+raíz es una copia exportada; regenérala tras cambiar rutas o esquemas:
+
+```sh
+uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2, ensure_ascii=False))" > openapi.json
+```
+
 ## Parar
 
 ```sh
