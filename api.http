@@ -195,8 +195,8 @@ Content-Type: {{contentType}}
   "due_at": "2026-03-01T09:00:00"
 }
 
-### Tareas — overdue solo acepta true → 422
-GET {{host}}/tasks?overdue=false
+### Tareas — overdue con un valor no booleano → 422 (false/1 se aceptan y no filtran)
+GET {{host}}/tasks?overdue=quizas
 
 ### Proyectos — DELETE con tareas → 409 (el proyecto "Casa" tiene tareas)
 DELETE {{host}}/projects/{{proyecto.response.body.$.id}}
