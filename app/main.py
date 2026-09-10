@@ -24,7 +24,7 @@ async def health() -> dict[str, str]:
 
 @app.get("/states", response_model=list[StateOut])
 def list_states(session: SessionDep) -> list[State]:
-    """Catálogo de estados, ordenado por el campo de orden y ``id`` de desempate."""
+    """Catálogo cerrado de estados, en el orden del catálogo con ``id`` como desempate."""
 
     stmt = select(State).order_by(State.sort_order, State.id)
     return list(session.scalars(stmt).all())
