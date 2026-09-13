@@ -7,11 +7,12 @@ seguridad; el `409` legible lo da una consulta previa.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.errors import ConflictError, NotFoundError, UnprocessableEntityError
 from app.models import Project, Task
 from app.schemas import ErrorDetail, ProjectIn, ProjectOut, ProjectPatch
 
@@ -46,7 +47,7 @@ def list_projects(session: SessionDep) -> list[Project]:
 def get_project(project_id: int, session: SessionDep) -> Project:
     project = session.get(Project, project_id)
     if project is None:
-        raise HTTPException(status_code=404, detail="proyecto no encontrado")
+        raise NotFoundError("proyecto no encontrado")
     return project
 
 
@@ -54,12 +55,12 @@ def get_project(project_id: int, session: SessionDep) -> Project:
 def update_project(project_id: int, patch: ProjectPatch, session: SessionDep) -> Project:
     project = session.get(Project, project_id)
     if project is None:
-        raise HTTPException(status_code=404, detail="proyecto no encontrado")
+        raise NotFoundError("proyecto no encontrado")
 
     campos = patch.model_fields_set
     if "name" in campos:
         if patch.name is None:
-            raise HTTPException(status_code=422, detail="name no puede ser nulo")
+            raise UnprocessableEntityError("name no puede ser nulo")
         project.name = patch.name
     if "description" in campos:
         project.description = patch.description
@@ -74,11 +75,11 @@ def delete_project(project_id: int, session: SessionDep) -> None:
     """`204` si no tiene tareas, `409` si las tiene, `404` si no existe."""
     project = session.get(Project, project_id)
     if project is None:
-        raise HTTPException(status_code=404, detail="proyecto no encontrado")
+        raise NotFoundError("proyecto no encontrado")
     tiene_tareas = session.scalar(
         select(Task.id).where(Task.project_id == project_id).limit(1)
     )
     if tiene_tareas is not None:
-        raise HTTPException(status_code=409, detail="el proyecto tiene tareas")
+        raise ConflictError("el proyecto tiene tareas")
     session.delete(project)
     session.commit()
