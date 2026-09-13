@@ -85,7 +85,7 @@ def client() -> Iterator[httpx.AsyncClient]:
 
 
 TASK_KEYS_V1 = {"id", "title", "description", "project_id", "state_id"}
-TASK_KEYS_V2 = TASK_KEYS_V1 | {"due_at"}
+TASK_KEYS_V2 = TASK_KEYS_V1 | {"due_at", "priority"}
 
 
 async def _crear_proyecto(client: httpx.AsyncClient, name: str = "Casa") -> int:
