@@ -7,11 +7,12 @@ Incluye ``due_at`` (opcional, normalizado a UTC), ``priority`` (entero opcional
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.errors import NotFoundError, UnprocessableEntityError
 from app.models import Project, State, Task
 from app.schemas import ErrorDetail, TaskIn, TaskOut, TaskPatch
 
@@ -27,9 +28,9 @@ _NOT_FOUND = {
 def _validar_referencias(session: Session, project_id: int, state_id: int) -> None:
     """`404` si el proyecto o el estado referenciados no existen."""
     if session.get(Project, project_id) is None:
-        raise HTTPException(status_code=404, detail="proyecto no encontrado")
+        raise NotFoundError("proyecto no encontrado")
     if session.get(State, state_id) is None:
-        raise HTTPException(status_code=404, detail="estado no encontrado")
+        raise NotFoundError("estado no encontrado")
 
 
 @router.post("/tasks", status_code=201, response_model=TaskOut, responses=_NOT_FOUND)
@@ -84,7 +85,7 @@ def list_tasks(
 def get_task(task_id: int, session: SessionDep) -> Task:
     task = session.get(Task, task_id)
     if task is None:
-        raise HTTPException(status_code=404, detail="tarea no encontrada")
+        raise NotFoundError("tarea no encontrada")
     return task
 
 
@@ -92,26 +93,26 @@ def get_task(task_id: int, session: SessionDep) -> Task:
 def update_task(task_id: int, patch: TaskPatch, session: SessionDep) -> Task:
     task = session.get(Task, task_id)
     if task is None:
-        raise HTTPException(status_code=404, detail="tarea no encontrada")
+        raise NotFoundError("tarea no encontrada")
 
     campos = patch.model_fields_set
     if "title" in campos:
         if patch.title is None:
-            raise HTTPException(status_code=422, detail="title no puede ser nulo")
+            raise UnprocessableEntityError("title no puede ser nulo")
         task.title = patch.title
     if "description" in campos:
         task.description = patch.description
     if "project_id" in campos:
         if patch.project_id is None:
-            raise HTTPException(status_code=422, detail="project_id no puede ser nulo")
+            raise UnprocessableEntityError("project_id no puede ser nulo")
         if session.get(Project, patch.project_id) is None:
-            raise HTTPException(status_code=404, detail="proyecto no encontrado")
+            raise NotFoundError("proyecto no encontrado")
         task.project_id = patch.project_id
     if "state_id" in campos:
         if patch.state_id is None:
-            raise HTTPException(status_code=422, detail="state_id no puede ser nulo")
+            raise UnprocessableEntityError("state_id no puede ser nulo")
         if session.get(State, patch.state_id) is None:
-            raise HTTPException(status_code=404, detail="estado no encontrado")
+            raise NotFoundError("estado no encontrado")
         task.state_id = patch.state_id
     if "due_at" in campos:
         task.due_at = patch.due_at
@@ -127,6 +128,6 @@ def update_task(task_id: int, patch: TaskPatch, session: SessionDep) -> Task:
 def delete_task(task_id: int, session: SessionDep) -> None:
     task = session.get(Task, task_id)
     if task is None:
-        raise HTTPException(status_code=404, detail="tarea no encontrada")
+        raise NotFoundError("tarea no encontrada")
     session.delete(task)
     session.commit()
