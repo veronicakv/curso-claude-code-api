@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INPUT=$(cat)
+CMD=$(printf '%s' "$INPUT" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tool_input', {}).get('command', ''))")
+
+case "$CMD" in
+  *'git commit'*) ;;
+  *) exit 0 ;;
+esac
+
+TMP=$(mktemp)
+
+if ! uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2, ensure_ascii=False))" > "$TMP" 2>/dev/null; then
+  rm -f "$TMP"
+  echo 'BLOQUEADO: la regeneracion de openapi.json fallo o supero el timeout. Regenera openapi.json con el comando documentado en README.md y vuelve a intentar el commit.' >&2
+  exit 2
+fi
+
+if diff -q "$TMP" openapi.json >/dev/null 2>&1; then
+  rm -f "$TMP"
+  exit 0
+fi
+
+rm -f "$TMP"
+echo 'BLOQUEADO: openapi.json esta desincronizado con el codigo. Regeneralo con el comando documentado en README.md y vuelve a intentar el commit.' >&2
+exit 2
